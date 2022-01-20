@@ -1,0 +1,41 @@
+{
+    "data": [
+        {
+            "name": "My 1st sample",
+            "file": "path/to/seurat/data.rds",
+            "cluster": "res.1",
+            "embedding": "umap",
+            "diff_ex_cluster": "res.1", 
+	        "diff_ex_file": "path/to/differential_expression/markers.csv"
+        },
+        {
+            "name": "My 2nd sample",
+            "file": "path/to/seurat/data2.rds",
+            "cluster": "res.1_rename1",
+            "embedding": "tsne",
+            "diff_ex_cluster": "res.1", 
+            "diff_ex_file": "path/to/differential_expression/markers.csv",
+
+            "---The Options Below Are Optional---": "",
+
+            "cluster_name_mapping": {
+                "C1": "Neurons",
+                "C2": "Astrocytes",
+                "C3": "Neural Progenitors"
+            },
+            "pt_size": 2,
+            "font_scale": 0.75,
+            "label_coordinates": [
+                {"cluster": "C1", "x": 0.1, "y": 1.1},
+                {"cluster": "C2", "x": 0.5, "y": 1.5},
+                {"cluster": "C3", "x": 0.8, "y": 1.8}
+            ]
+        }
+    ],
+    "config": {
+        "ui_title": "Single Cell Browser",
+        "title_link_text": "Optional subtitle (e.g. your lab)",
+        "title_link_url": "http://optional-link-to-your-lab.com"
+    }
+
+}
