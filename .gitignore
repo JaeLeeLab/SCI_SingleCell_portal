@@ -1,11 +1,14 @@
 .DS_Store
 
+renv/*
+template/*
+deprecated/*
+rsconnect/*
 
 # Data files
 data/*
 config.json
-!data/example_config.json
-assets/screenshots
+assets/*
 
 # History files
 .Rhistory

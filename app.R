@@ -1,0 +1,549 @@
+# TODO:
+# Single-cell* RNAseq in title
+# Add methods section
+# 
+
+library(shiny)
+library(shinyjs)
+library(Matrix)
+library(ggplot2)
+library(shinythemes)
+library(tidyr)
+library(BiocManager)
+options(repos = BiocManager::repositories())
+# BiocManager::install()
+# library(DT)
+
+
+# Load
+# load(file = './data/appdata.RData') # This is faster by ~10%
+source(file = 'helper.R')
+
+
+# UI ----------------------------------------------------------------------
+
+ui <- fluidPage(
+  
+  # jQuery chunk for ensuring DOM is fully loaded before user can interact
+  tags$script(HTML(
+   '$(document).ready(function () {
+    $.getJSON("https://ipapi.co/json/", function (client) {
+        Shiny.onInputChange("client", client);
+    });
+});'
+  )),
+  
+  # Set layout colors/theme
+  theme = shinytheme("yeti"),
+  
+  # App title
+  titlePanel(
+    fluidRow(
+      column(
+        width = 9, 
+        div(
+          h2(
+            window_title, 
+            style="display:inline;"
+          ),
+          tags$a(
+            h3(
+              title_link_text, 
+              style="display:inline;"
+            ),
+            href = title_link_url, 
+            target = "_blank"
+          ),
+          style='padding-left:10px;'
+        )
+      ),
+      column(
+        width = 3, 
+        div(
+          tags$a(
+            h5(
+              "Browser App", 
+              style = "display:inline;color:black;vertical-align:middle;"
+            ),
+            href = "https://github.com/JaeLeeLab/sci_scRNAseq_portal", 
+            target = "_blank"
+          ),
+          tags$a(
+            img(
+              height = 24, 
+              width = 24, 
+              src = "GitHub-Mark-64px.png", 
+              style="display:inline;vertical-align:middle;"
+            ),
+            href = "https://github.com/JaeLeeLab/sci_scRNAseq_portal", 
+            target="_blank"
+          )
+        ),
+        align="right"
+      )
+    ),
+    
+    # This is to display on the headers of web browser.
+    windowTitle = window_title
+  ),
+  
+  # Create panel of tabs for different queries
+  tabsetPanel(
+    
+    # About study panel
+    tabPanel(
+      title = 'About',
+      br(),
+      fluidRow(
+        column(
+          width = 7,
+          br(),
+          HTML(
+            text = "<p style='font-size:15px'>This website accompanies the 
+            paper:<br>Lindsay M. Milich, James S. Choi, Christine Ryan, Susana R. 
+            Cerqueira, Sofia Benavides, Stephanie L. Yahn, Pantelis Tsoulfas, 
+            Jae K. Lee; Single-cell analysis of the cellular heterogeneity and 
+            interactions in the injured mouse spinal cord. <i>J Exp Med</i> 2 
+            August 2021; 218 (8): e20210040. 
+            <a href='https://doi.org/10.1084/jem.20210040'>DOI: https://doi.org/10.1084/jem.20210040</a></p><br>"
+          ),
+          HTML(
+            text = '<p>Click the "Gene Expression" tab to start exploring the data presented in the paper.</p>'
+          ),
+          # HTML(
+          #   text = '<p><li><b>Gene expression:</b> type in a gene of interest to plot its expression in the UMAP low dimensional space.</li><p>'
+          # ),
+          # HTML(
+          #   text = '<p><li><b>Gene expression time course:</b> type in a gene of interest to plot its expression in the UMAP low dimensional space, with cells from different injury time-points plotted separately.</li></p>'
+          # ),
+          # HTML(
+          #   text = "<p><li><b>Cluster marker genes:</b> select a cluster of interest to display the genes that show preferential expression in that cluster over others. Clicking on a row in the table will show the corresponding expression plot. On the left, you can select the type of test, which controls how many clusters (all or 75%) have lower expression of the gene, compared to the selected cluster.</li></p>"
+          # ),
+          style='padding-left:10px;'
+        ),
+        column(
+          width = 5,
+          div(
+            tags$a(
+              img(
+                height = 350, 
+                width = 475, 
+                src = "homepage_sci_umap_time.png", 
+                style="display:inline;vertical-align:middle;"
+              )
+            )
+          )
+        )
+      ),
+      hr(),
+      fluidRow(
+        h3(
+          "Data availability", 
+          style="display:inline;"
+        ),
+        br(),
+        br(),
+        column(
+          width = 12,
+          HTML(
+            text = "<p>Raw data are available from the SRA (Sequence Read Archive) database under study <a href='https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=SRP295673'>SRP295673</a>. Gene-count matrices are available from the Gene Expression Omnibus under accession <a href='https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE162610'>GSE162610</a>. Relevant sample-level and cell-level metadata are available under the GEO accession metadata.</p><p>Code used to analyze the single-cell RNA-seq data from <i>Single-cell analysis of the cellular heterogeneity and interactions in the injured mouse spinal cord</i> are available on <a href='https://github.com/JaeLeeLab/sci_scRNAseq'>Github.</a></p>"
+          )
+        ),
+        hr(),
+        style='padding-left:10px;'
+      ),
+      style='padding-left:20px; padding-right:20px'
+    ),
+    # Tab to query features 
+    tabPanel(
+      title = 'Gene Expression',
+      shinyjs::useShinyjs(),
+      sidebarLayout(
+        fluid = TRUE,
+        # `choices = NULL` so that choices are set in server-side
+        sidebarPanel(
+          tags$style(type = 'text/css', ".selectize-input { font-size: 16px; line-height: 22px;} .selectize-dropdown { font-size: 16px; line-height: 22px; }"),
+          width = 2,
+          selectizeInput(
+            inputId = "selected_dataset",
+            choices = NULL,
+            label = 'Select dataset:'
+          ),
+          selectizeInput(
+            inputId = "selected_feature", 
+            choices = NULL, 
+            options = list(placeholder = 'Select a gene'),
+            label = 'Select gene:'
+          ),
+          selectizeInput(
+            inputId = "selected_groupby",
+            choices = NULL,
+            label = 'Group cells by:'
+          ),
+          # textAreaInput(
+          #   inputId = "gene_list", 
+          #   label = "Gene List (up to 10 genes)", 
+          #   placeholder = "Up to 10,\n1 per line"
+          # ),
+          # fluidRow(
+          #   column(
+          #     width = 12, 
+          #     actionButton(
+          #       inputId = "gene_list_submit", 
+          #       label = "Dot plot genes"
+          #     ), 
+          #     align = "center"
+          #   )
+          # ),
+          # h5(
+          #   strong("Table controls")
+          # ),
+          # fluidRow(
+          #   column(
+          #     width = 12,
+          #     actionButton(
+          #       inputId = "reset_table", 
+          #       label = "Reset table"
+          #     ),
+          #     align = "center"
+          #   )
+          # ),
+          shinyjs::hidden(
+            textInput(
+              inputId = "hidden_selected_feature", 
+              label = "Hidden Selected Gene", 
+              value = NULL
+            )
+          ),
+          shinyjs::hidden(
+            textAreaInput(
+              inputId = "hidden_feature_list", 
+              label = NULL, 
+              value = NULL
+            )
+          ),
+          shinyjs::hidden(
+            textInput(
+              inputId = "hidden_selected_cluster",
+              label = "Hidden Selected Cluster",
+              value = NULL
+            )
+          ),
+          HTML(
+            text = "<p style='font-size:14px'><b>How to use:</b><br>To get started, selected a dataset from the \"Select dataset\" drop-down menu. <ul style=\"padding-left:10px\"><li>All_SCI: all cells from study.</li><li>Myeloid: macrophages, microglia, etc. (as in Figure 2 of paper).</li><li>Vascular: endothelial cells, fibroblasts, etc. (as in Figure 6 of paper).</li><li>Macroglia: astrocytes, oligodendrocytes, etc. (as in Figure 8 of paper).</li></ul></p><p>Query genes from the \"Select Gene\" drop-down menu. Alternatively, start typing your gene of interest for matching items.</p><p>Cells can be grouped and colored by compartment, celltype, subtype, and other categorial meta-data, from the \"Group cells by\" menu.</p><p>To zoom in, click and drag to create a region of interest in either of the top two panels. Double-click the region to zoom. Double-click again to reset zoom.</p>"
+          )
+        ),
+        mainPanel(
+          fluid = TRUE, 
+          width = 10,
+          fluidRow(
+            width = 12,
+            column(
+              width = 5,
+              plotOutput(
+                outputId = "dimplot",
+                width = "100%", 
+                height = "500px",
+                click = 'dimplot_click',
+                dblclick = 'dimplot_dblclick',
+                brush = brushOpts(
+                  id = 'umap_brush',
+                  resetOnNew = TRUE
+                )
+              )
+            ),
+            column(
+              width = 5,
+              plotOutput(
+                outputId = "featureplot",
+                width = "auto", 
+                height = "500px",
+                click = 'splitfeatureplot_click',
+                dblclick = 'featureplot_dblclick',
+                brush = brushOpts(
+                  id = 'umap_brush',
+                  resetOnNew = TRUE
+                )
+              )
+            ),
+            column(
+              width = 2,
+              plotOutput(
+                outputId = 'dimplotlegend',
+                width = 'auto',
+                height = '500px'
+              )
+            )
+          ),
+          fluidRow(
+            width = 12,
+            plotOutput(
+              outputId = 'splitfeatureplot',
+              width = 'auto',
+              height = '350px',
+              click = 'splitfeatureplot_click',
+              dblclick = 'splitfeatureplot_dblclick',
+              brush = brushOpts(
+                id = 'umap_brush',
+                resetOnNew = TRUE
+              )
+            )
+          ),
+          fluidRow(
+            column(
+              width = 3,
+              # DTOutput(outputId = 'groupby_feature_table')
+            ),
+            column(
+              width = 6,
+              plotOutput(
+                outputId = 'featuredotplot',
+                hover = 'dotplot_hover',
+                height = '550px'
+              )
+            ),
+            column(
+              width = 3,
+              # DTOutput(outputId = 'groupby_feature_table')
+            ),
+            # column(
+            #   width = 7,
+            #   DTOutput(outputId = 'groupby_feature_table')
+            # )
+          )
+        )
+      )
+    )
+  )
+)
+
+
+# Server ------------------------------------------------------------------
+
+server <- function(input, output, session) {
+  
+  #Logging
+  observeEvent(
+    eventExpr = {
+      input$client 
+    },
+    handlerExpr = {
+      logging::loginfo("New client with ip: %s", input$client$ip)
+    },
+    ignoreNULL = TRUE, 
+    ignoreInit = FALSE
+  )
+  
+  # Initialize dataset
+  updateSelectizeInput(
+    session = session, 
+    label = 'Select dataset:',
+    inputId = "selected_dataset",
+    choices = names(dataset_dict),
+    selected = 'All_SCI'
+  )
+  
+  # Initialize cell groupby
+  updateSelectizeInput(
+    session = session,
+    inputId = "selected_groupby", 
+    label = "Group cells by:",
+    choices = cell_groupings,
+    selected = 'Celltype'
+  )
+  
+  # Initialize selected feature
+  updateSelectizeInput(
+    session = session,
+    inputId = "selected_feature", 
+    label = "Select Gene:",
+    choices = all_features,
+    server = TRUE,
+    selected = 'Cx3cr1'
+  )
+  
+  # Upon change to selected_dataset, take subset of expression matrix
+  dataset_value <- eventReactive(
+    eventExpr = {
+      input$selected_dataset
+    },
+    valueExpr = {
+      dataset_value <- dataset_dict[input$selected_dataset]
+      return(dataset_value)
+    },
+    ignoreInit = FALSE,
+    ignoreNULL = TRUE
+  )
+  
+  feature_value <- eventReactive(
+    eventExpr = {
+      input$selected_feature
+    },
+    valueExpr = {
+      
+    }
+  )
+  
+  dataset_ptsize <- eventReactive(
+    eventExpr = {
+      input$selected_dataset
+    },
+    valueExpr = {
+      ncells <- obs_sci[[paste0(dataset_value(), '_UMAP_1')]]
+      ncells <- sum(!is.na(ncells))
+      ptsize <- sqrt(1/sqrt(ncells))*8
+    }
+  )
+  
+  dimplotlegend_labelsize <- eventReactive(
+    eventExpr = {
+      input$selected_groupby
+    },
+    valueExpr = {
+      n <- length(unique(obs_sci[[input$selected_groupby]]))
+      labelsize <- (n^2 + n) / (n^2 - n)
+      return(labelsize)
+    }
+  )
+  
+  # Zooming on umaps
+  ranges <- reactiveValues(x = NULL, y = NULL)
+  observeEvent(
+    eventExpr = {
+      c(input$dimplot_dblclick, input$featureplot_dblclick, input$splitfeatureplot_dblclick)
+    }, 
+    handlerExpr = {
+      brush <- input$umap_brush
+      if (!is.null(brush)) {
+        ranges$x <- c(brush$xmin, brush$xmax)
+        ranges$y <- c(brush$ymin, brush$ymax)
+      } else {
+        ranges$x <- NULL
+        ranges$y <- NULL
+      }
+    }
+  )
+  
+  # Dimplot to show clusters or other categorical metadata
+  observeEvent(
+    eventExpr = {
+      c(input$selected_dataset, input$selected_groupby)
+    },
+    handlerExpr = {
+      tmp_group <- req(input$selected_groupby)
+      logging::loginfo("loaded dataset %s with dimplot cells group by %s.", 
+                       dataset_value(), tmp_group)
+      output$dimplot <- renderPlot(
+        expr = {
+          draw_dimplot(
+            dataset = dataset_value(),
+            groupby = tmp_group,
+            ptsize = dataset_ptsize(),
+            xranges = ranges$x,
+            yranges = ranges$y
+          )
+        }
+      )
+    }
+  )
+  
+  # Feature plot (to display gene expression)
+  observeEvent(
+    eventExpr = {
+      c(input$selected_dataset, input$selected_feature)
+    },
+    handlerExpr = {
+      tmp_feature <- req(input$selected_feature)
+      output$featureplot <- renderPlot(
+        expr = {
+          logging::loginfo("loaded dataset %s with featureplot feature %s.", 
+                           dataset_value(), tmp_feature)
+          draw_featureplot(
+            dataset = dataset_value(),
+            feature = tmp_feature,
+            ptsize = dataset_ptsize(),
+            xranges = ranges$x,
+            yranges = ranges$y
+          )
+        }
+      )
+    }
+  )
+  
+  # Render dimplot legend, re-render upon change to `input$selected_groupby` or
+  # `input$selected_dataset`.
+  observeEvent(
+    eventExpr = {
+      c(input$selected_groupby, input$selected_dataset)
+    },
+    handlerExpr = {
+      tmp_groupby <- req(input$selected_groupby)
+      output$dimplotlegend <- renderPlot(
+        expr = {
+          draw_dimplotlegend(
+            dataset = dataset_value(),
+            groupby = tmp_groupby,
+            ptsize = 5*dataset_ptsize(),
+            labelsize = dimplotlegend_labelsize()
+          )
+        }
+      )
+    }
+  )
+  
+  # Split feature plot - separate plot per injury time-point
+  observeEvent(
+    eventExpr = {
+      c(input$selected_dataset, input$selected_feature)
+    },
+    handlerExpr = {
+      tmp_feature <- req(input$selected_feature)
+      output$splitfeatureplot <- renderPlot(
+        expr = {
+          draw_splitfeatureplot(
+            dataset = dataset_value(),
+            feature = tmp_feature,
+            ptsize = dataset_ptsize(),
+            xranges = ranges$x,
+            yranges = ranges$y
+          )
+        }
+      )
+    }
+  )
+  
+  # Feature dot plot with dot rows split by `input$selected_groupby`
+  observeEvent(
+    eventExpr = {
+      c(input$selected_dataset, input$selected_feature, input$selected_groupby)
+    },
+    handlerExpr = {
+      tmp_feature <- req(input$selected_feature)
+      tmp_groupby <- req(input$selected_groupby)
+      output$featuredotplot <- renderPlot(
+        expr = {
+          draw_featuredotplot(
+            dataset = dataset_value(),
+            feature = tmp_feature,
+            groupby = tmp_groupby
+          )
+        }
+      )
+    }
+  )
+}
+
+shinyApp(ui = ui, server = server)
+
+# To deploy, run the following two lines:
+# Current working diretory should contain the project directory.
+# setwd('D:/MiamiProject/')
+# rsconnect::deployApp(appDir = 'sci_scRNAseq_portal/', appName = 'sci_scRNAseq_portal', account = 'jaeleelab')
+# rsconnect::accounts()
+# rsconnect::accountInfo()
+
+
+# To allow bioconductor packages to be sourced. Run the following in your 
+# current session before pushing.
+# library(BiocManager)
+# options(repos = BiocManager::repositories())
