@@ -6,7 +6,7 @@ library(ggplot2)
 
 tmp_dir <- 'D:/MiamiProject/sci_scRNAseq/'
 app_data_fraction <- 0.35
-
+  
 # Extract sci expression and dimreduc data -----------------------------------
 
 sci <- readRDS(file = paste0(tmp_dir, 'data/sci.rds'))
@@ -274,6 +274,9 @@ for (i in 1:ncol(obs_sci)) {
 # All possible genes to query
 all_features <- rownames(vars_sci)
 
+# Cell Counts
+cell_counts <- obs_sci %>% count(InjuryTimePoint)
+
 # dimplot label coordinates
 umap_vars <- grep(pattern = 'UMAP', colnames(obs_sci), value = TRUE)
 label_coords <- obs_sci[c(cell_groupings, umap_vars)] %>%
@@ -328,6 +331,7 @@ save(log_x_sci,
      dataset_dict,
      cell_groupings,
      all_features,
+     cell_counts,
      window_title,
      title_link_text,
      title_link_url,

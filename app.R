@@ -99,16 +99,16 @@ ui <- fluidPage(
           width = 7,
           br(),
           HTML(
-            text = "<p style='font-size:15px'>This website accompanies the 
-            paper:<br>Lindsay M. Milich, James S. Choi, Christine Ryan, Susana R. 
-            Cerqueira, Sofia Benavides, Stephanie L. Yahn, Pantelis Tsoulfas, 
-            Jae K. Lee; Single-cell analysis of the cellular heterogeneity and 
-            interactions in the injured mouse spinal cord. <i>J Exp Med</i> 2 
-            August 2021; 218 (8): e20210040. 
-            <a href='https://doi.org/10.1084/jem.20210040'>DOI: https://doi.org/10.1084/jem.20210040</a></p><br>"
+            text = "<p style='font-size:15px'>This website accompanies the publication:<br><br>Lindsay M. Milich, James S. Choi, Christine Ryan, Susana R. Cerqueira, Sofia Benavides, Stephanie L. Yahn, Pantelis Tsoulfas, Jae K. Lee; Single-cell analysis of the cellular heterogeneity and interactions in the injured mouse spinal cord. <i>J Exp Med</i> 2 August 2021; 218 (8): e20210040. <a href='https://doi.org/10.1084/jem.20210040'>DOI: https://doi.org/10.1084/jem.20210040</a></p>"
           ),
           HTML(
-            text = '<p>Click the "Gene Expression" tab to start exploring the data presented in the paper.</p>'
+            text = '<br><p><b>Click the "Gene Expression" tab to start exploring the data presented in the paper.</b></p>'
+          ),
+          HTML(
+            text = '<br><h4>Background:</h4>The wound healing process that occurs after spinal cord injury (SCI) is critical for maintaining tissue homeostasis and limiting tissue damage, but eventually results in a scar-like environment that is not conducive to regeneration and repair. Within the first 7 days post-injury (dpi), multiple dynamic processes involving complex cellular heterogeneity occur, thus providing an opportunity for therpeutic intervention. This dataset provides a resource to better understand the cellular heterogeneity and interactions that occur in the SCI environment.'
+          ),
+          HTML(
+            text = '<h4>Methods:</h4><p>C57BL/6J mice were subject to mid-thoracic contusion SCI and processed to generate single-cell suspensions. Cells were collected from uninjured, 1 dpi, 3 dpi, and 7dpi spinal cords. In total, 66,178 cells were sequenced. '
           ),
           # HTML(
           #   text = '<p><li><b>Gene expression:</b> type in a gene of interest to plot its expression in the UMAP low dimensional space.</li><p>'
@@ -132,6 +132,11 @@ ui <- fluidPage(
                 style="display:inline;vertical-align:middle;"
               )
             )
+          ),
+          div(
+            tableOutput(
+              outputId = 'count_table'
+            )
           )
         )
       ),
@@ -146,7 +151,7 @@ ui <- fluidPage(
         column(
           width = 12,
           HTML(
-            text = "<p>Raw data are available from the SRA (Sequence Read Archive) database under study <a href='https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=SRP295673'>SRP295673</a>. Gene-count matrices are available from the Gene Expression Omnibus under accession <a href='https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE162610'>GSE162610</a>. Relevant sample-level and cell-level metadata are available under the GEO accession metadata.</p><p>Code used to analyze the single-cell RNA-seq data from <i>Single-cell analysis of the cellular heterogeneity and interactions in the injured mouse spinal cord</i> are available on <a href='https://github.com/JaeLeeLab/sci_scRNAseq'>Github.</a></p>"
+            text = "<p>Code used to analyze the single-cell RNA-seq data from <i>Single-cell analysis of the cellular heterogeneity and interactions in the injured mouse spinal cord</i> are available on <a href='https://github.com/JaeLeeLab/sci_scRNAseq'>Github.</a> Direct download links can be found in the repo.</p><p>Raw data are available from the SRA (Sequence Read Archive) database under study <a href='https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=SRP295673'>SRP295673</a>. Gene-count matrices are available from the Gene Expression Omnibus under accession <a href='https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE162610'>GSE162610</a>. Relevant sample-level and cell-level metadata are available under the GEO accession metadata.</p>"
           )
         ),
         hr(),
@@ -179,6 +184,11 @@ ui <- fluidPage(
             inputId = "selected_groupby",
             choices = NULL,
             label = 'Group cells by:'
+          ),
+          checkboxInput(
+            inputId = 'draw_labels',
+            label = 'Overlay group labels',
+            value = TRUE
           ),
           # textAreaInput(
           #   inputId = "gene_list", 
@@ -334,6 +344,15 @@ server <- function(input, output, session) {
     ignoreInit = FALSE
   )
   
+  # Cell count table
+  output$count_table <- renderTable(
+    expr = {
+      cell_counts
+    },
+    bordered = TRUE,
+    width = '100%'
+  )
+  
   # Initialize dataset
   updateSelectizeInput(
     session = session, 
@@ -375,15 +394,8 @@ server <- function(input, output, session) {
     ignoreNULL = TRUE
   )
   
-  feature_value <- eventReactive(
-    eventExpr = {
-      input$selected_feature
-    },
-    valueExpr = {
-      
-    }
-  )
-  
+  # Upon change to selected_dataset, change point size according to number of 
+  # points displayed.
   dataset_ptsize <- eventReactive(
     eventExpr = {
       input$selected_dataset
@@ -392,6 +404,7 @@ server <- function(input, output, session) {
       ncells <- obs_sci[[paste0(dataset_value(), '_UMAP_1')]]
       ncells <- sum(!is.na(ncells))
       ptsize <- sqrt(1/sqrt(ncells))*8
+      return(ptsize)
     }
   )
   
@@ -405,6 +418,16 @@ server <- function(input, output, session) {
       return(labelsize)
     }
   )
+  
+  # # UMAP ROI brush selection
+  # brush <- eventReactive(
+  #   eventExpr = {
+  #     input$selected_dataset
+  #   },
+  #   valueExpr = {
+  #     return(NULL)
+  #   }
+  # )
   
   # Zooming on umaps
   ranges <- reactiveValues(x = NULL, y = NULL)
@@ -424,6 +447,17 @@ server <- function(input, output, session) {
     }
   )
   
+  # Reset brush ROI on zoom
+  observeEvent(
+    eventExpr = {
+      c(input$selected_dataset)
+    }, 
+    handlerExpr = {
+      ranges$x <- NULL
+      ranges$y <- NULL
+    }
+  )
+  
   # Dimplot to show clusters or other categorical metadata
   observeEvent(
     eventExpr = {
@@ -440,7 +474,8 @@ server <- function(input, output, session) {
             groupby = tmp_group,
             ptsize = dataset_ptsize(),
             xranges = ranges$x,
-            yranges = ranges$y
+            yranges = ranges$y,
+            draw_labels = input$draw_labels
           )
         }
       )
@@ -538,7 +573,7 @@ shinyApp(ui = ui, server = server)
 # To deploy, run the following two lines:
 # Current working diretory should contain the project directory.
 # setwd('D:/MiamiProject/')
-# rsconnect::deployApp(appDir = 'sci_scRNAseq_portal/', appName = 'sci_scRNAseq_portal', account = 'jaeleelab')
+# rsconnect::deployApp(appDir = 'sci_scRNAseq_portal/', appName = 'sci_singlecell', account = 'jaeleelab')
 # rsconnect::accounts()
 # rsconnect::accountInfo()
 

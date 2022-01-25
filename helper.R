@@ -36,7 +36,8 @@ draw_dimplot <- function(
   groupby,
   ptsize,
   xranges,
-  yranges
+  yranges,
+  draw_labels
 ) {
   plot_these <- c(paste0(dataset_value, c('_UMAP_1', '_UMAP_2')), groupby)
   umap_df <- obs_sci[plot_these]
@@ -61,10 +62,12 @@ draw_dimplot <- function(
          xaxt = 'n', yaxt = 'n', cex.main = 1.5,
          xlim = xranges, ylim = yranges
     )
-    text(x = label_df$dim1,
-         y = label_df$dim2,
-         labels = label_df$label,
-         cex = label_cex)
+    if (draw_labels) {
+      text(x = label_df$dim1,
+           y = label_df$dim2,
+           labels = label_df$label,
+           cex = label_cex)
+    }
   }
 }
 
@@ -155,16 +158,18 @@ draw_dimplotlegend <- function(
   label_df$label <- droplevels(label_df$label)
   legend_labels <- levels(label_df$label)
   n <- length(legend_labels)
-  label_y_spacing <- (n^2 + n + 1) / (n^2 - n + 1)
+  label_y_spacing <- (n^2 + n + 5) / (n^2 - n + 5) - 0.060337
   par(mai = c(0.1, 0.1, 1, 0.1), mar = c(0.2, 0.2, 2, 0.2), xpd = FALSE)
   {
     plot(NULL ,xaxt='n',yaxt='n',bty='n',ylab='',xlab='', xlim=0:1, ylim=0:1)
     legend(x = 'topleft',
-           y.intersp = label_y_spacing,
+           y.intersp = 1.05,
            legend = legend_labels,
            col = rainbow(length(legend_labels), v = 0.9)[1:length(legend_labels)],
            pch = 16, xpd = TRUE, ncol = 1, plot = TRUE,
-           pt.cex = ptsize, cex = labelsize, bty = 'n')
+           pt.cex = ptsize*0.8, 
+           # cex = labelsize, 
+           bty = 'n')
   }
 }
 
