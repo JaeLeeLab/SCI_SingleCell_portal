@@ -2,7 +2,36 @@
 
 load(file = './data/appdata.RData')
 
+f <- h5file(filename = './data/sci.h5',
+            mode = 'r')
+log_x_sci <- vector(mode = 'list', length = 4000)
+log_x_sci_timestamp <- vector(mode = 'list', length = 4000)
+data_index <- 1
+
+
 # Helper functions --------------------------------------------------------
+
+load_data <- function(
+  feature
+) {
+  if (!feature %in% names(log_x_sci)) {
+    if (!all(sapply(log_x_sci, is.null))) {
+      data_index <<- which.min(log_x_sci_timestamp)
+    }
+    g.i <- which(f[[names(f)]][['barcodes']][1:nrow(vars_sci)] == feature)
+    i <- c(f[[names(f)]][['indptr']][g.i:(g.i + 1)]) + 1
+    nonzero_vals <- f[[names(f)]][['data']][i[1]:(i[2]-1)]
+    c <- f[[names(f)]][['indices']][i[1]:(i[2]-1)] + 1
+    tmp <- rep.int(0, times = ncells)
+    tmp[c] <- nonzero_vals
+    tmp <- log1p(tmp/library_size * 10000)
+    log_x_sci[[data_index]] <<- tmp
+    names(log_x_sci)[data_index] <<- feature
+    log_x_sci_timestamp[[data_index]] <<- Sys.time()
+    names(log_x_sci_timestamp[[data_index]]) <<- feature
+    data_index <<- which(sapply(log_x_sci, is.null))[1]
+  }
+}
 
 get_feature_colorscale <- function(x) {
   a <- x/max(x)
@@ -53,6 +82,22 @@ draw_dimplot <- function(
   label_df$label <- factor(label_df$label, levels = levels(umap_df$groupby))
   n <- nrow(label_df)
   label_cex <- (n^2 + n + 1) / (n^2 - n + 1)
+  
+  t1 <- Sys.time()
+  ggplot(data = umap_df) + 
+    geom_point(mapping = aes(x = dim1, y = dim2, color = groupby),
+               size = 0.5)
+  t1 <- Sys.time() - t1
+  t2 <- Sys.time()
+  plot(x = umap_df$dim1, y = umap_df$dim2, 
+       col = rainbow(length(unique(umap_df$groupby)), v = 0.9)[umap_df$groupby],
+       pch = 16, cex = ptsize, xlab = 'UMAP_1', ylab = 'UMAP_2',
+       main = paste('Grouped by:', groupby),
+       xaxt = 'n', yaxt = 'n', cex.main = 1.5,
+       xlim = xranges, ylim = yranges
+  )
+  t2 <- Sys.time() - t2  
+  
   {
     par(mai = c(0.1, 0.1, 1, 0.1), mar = c(0.2,0.2,2,0.2), xpd = FALSE)
     plot(x = umap_df$dim1, y = umap_df$dim2, 
@@ -79,7 +124,8 @@ draw_featureplot <- function(
   yranges
 ) {
   umap_df <- obs_sci[paste0(dataset_value, c('_UMAP_1', '_UMAP_2'))]
-  umap_df$feature <- log_x_sci[feature,]
+  load_data(feature = feature)
+  umap_df$feature <- log_x_sci[[feature]]
   colnames(umap_df) <- c('dim1','dim2','feature')
   umap_df <- umap_df[order(umap_df$feature),]
   par(mai = c(0.1, 0.1, 1, 0.1), mar = c(0.2,0.2,2,0.2), xpd = FALSE)
@@ -123,7 +169,8 @@ draw_splitfeatureplot <- function(
   yranges
 ) {
   umap_df <- obs_sci[c(paste0(dataset_value, c('_UMAP_1', '_UMAP_2')), 'InjuryTimePoint')]
-  umap_df$feature <- log_x_sci[feature,]
+  load_data(feature = feature)
+  umap_df$feature <- log_x_sci[[feature]]
   colnames(umap_df) <- c('dim1','dim2','time', 'feature')
   if (!sum(umap_df$feature) > 0) {
     umap_df$col <- 'grey90'
@@ -167,7 +214,7 @@ draw_dimplotlegend <- function(
            legend = legend_labels,
            col = rainbow(length(legend_labels), v = 0.9)[1:length(legend_labels)],
            pch = 16, xpd = TRUE, ncol = 1, plot = TRUE,
-           pt.cex = ptsize*0.8, 
+           pt.cex = ptsize*0.5, 
            # cex = labelsize, 
            bty = 'n')
   }
@@ -180,7 +227,8 @@ draw_featuredotplot <- function(
 ) {
   plot_these <- c(paste0(dataset_value, '_UMAP_1'), groupby, 'InjuryTimePoint')
   data_df <- obs_sci[plot_these]
-  data_df$feature <- log_x_sci[feature,]
+  load_data(feature = feature)
+  data_df$feature <- log_x_sci[[feature]]
   if (!sum(data_df$feature) > 0) {
     text(x = 0.5, y = 0.5, 'Gene not detected in any cells.',
          cex = 1.5, col = 'black')

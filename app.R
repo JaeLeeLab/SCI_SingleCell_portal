@@ -1,15 +1,18 @@
 # TODO:
-# Single-cell* RNAseq in title
-# Add methods section
+# Clarify legends for dimplot vs gene expression
 # 
 
 library(shiny)
 library(shinyjs)
 library(Matrix)
+library(dplyr)
 library(ggplot2)
 library(shinythemes)
-library(tidyr)
+# library(tidyr)
 library(BiocManager)
+library(hdf5r)
+# library(Seurat)
+# library(HDF5Array)
 options(repos = BiocManager::repositories())
 # BiocManager::install()
 # library(DT)
@@ -26,7 +29,7 @@ ui <- fluidPage(
   
   # jQuery chunk for ensuring DOM is fully loaded before user can interact
   tags$script(HTML(
-   '$(document).ready(function () {
+    '$(document).ready(function () {
     $.getJSON("https://ipapi.co/json/", function (client) {
         Shiny.onInputChange("client", client);
     });
@@ -394,6 +397,15 @@ server <- function(input, output, session) {
     ignoreNULL = TRUE
   )
   
+  # dataset_feature <- observeEvent(
+  #   eventExpr = {
+  #     input$selected_feature
+  #   },
+  #   handlerExpr = {
+  #     load_data(feature = input$selected_feature)
+  #   }
+  # )
+  
   # Upon change to selected_dataset, change point size according to number of 
   # points displayed.
   dataset_ptsize <- eventReactive(
@@ -403,7 +415,7 @@ server <- function(input, output, session) {
     valueExpr = {
       ncells <- obs_sci[[paste0(dataset_value(), '_UMAP_1')]]
       ncells <- sum(!is.na(ncells))
-      ptsize <- sqrt(1/sqrt(ncells))*8
+      ptsize <- sqrt(1/sqrt(ncells)*150)
       return(ptsize)
     }
   )
@@ -436,6 +448,7 @@ server <- function(input, output, session) {
       c(input$dimplot_dblclick, input$featureplot_dblclick, input$splitfeatureplot_dblclick)
     }, 
     handlerExpr = {
+      gc(verbose = FALSE)
       brush <- input$umap_brush
       if (!is.null(brush)) {
         ranges$x <- c(brush$xmin, brush$xmax)
@@ -469,6 +482,7 @@ server <- function(input, output, session) {
                        dataset_value(), tmp_group)
       output$dimplot <- renderPlot(
         expr = {
+          gc(verbose = FALSE)
           draw_dimplot(
             dataset = dataset_value(),
             groupby = tmp_group,
@@ -493,6 +507,7 @@ server <- function(input, output, session) {
         expr = {
           logging::loginfo("loaded dataset %s with featureplot feature %s.", 
                            dataset_value(), tmp_feature)
+          gc(verbose = FALSE)
           draw_featureplot(
             dataset = dataset_value(),
             feature = tmp_feature,
@@ -515,6 +530,7 @@ server <- function(input, output, session) {
       tmp_groupby <- req(input$selected_groupby)
       output$dimplotlegend <- renderPlot(
         expr = {
+          gc(verbose = FALSE)
           draw_dimplotlegend(
             dataset = dataset_value(),
             groupby = tmp_groupby,
@@ -535,6 +551,7 @@ server <- function(input, output, session) {
       tmp_feature <- req(input$selected_feature)
       output$splitfeatureplot <- renderPlot(
         expr = {
+          gc(verbose = FALSE)
           draw_splitfeatureplot(
             dataset = dataset_value(),
             feature = tmp_feature,
@@ -557,6 +574,7 @@ server <- function(input, output, session) {
       tmp_groupby <- req(input$selected_groupby)
       output$featuredotplot <- renderPlot(
         expr = {
+          gc(verbose = FALSE)
           draw_featuredotplot(
             dataset = dataset_value(),
             feature = tmp_feature,

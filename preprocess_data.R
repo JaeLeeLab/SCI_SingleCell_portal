@@ -1,11 +1,11 @@
 
-library(Seurat)
-library(tidyr)
-library(dplyr)
-library(ggplot2)
+# library(Seurat)
+# library(tidyr)
+# library(dplyr)
+# library(ggplot2)
 
 tmp_dir <- 'D:/MiamiProject/sci_scRNAseq/'
-app_data_fraction <- 0.35
+app_data_fraction <- 1
   
 # Extract sci expression and dimreduc data -----------------------------------
 
@@ -13,9 +13,10 @@ sci <- readRDS(file = paste0(tmp_dir, 'data/sci.rds'))
 DefaultAssay(sci) <- 'RNA'
 sci[['SCT']] <- NULL
 sci[['integrated']] <- NULL
-sci <- NormalizeData(sci)
+library_size <- sci$nCount_RNA
+ncells <- ncol(sci[['RNA']]@counts)
 vars_sci <- sci[['RNA']]@meta.features
-log_x_sci <- sci[['RNA']]@data
+x_sci <- sci[['RNA']]@counts
 obs_sci <- sci@meta.data
 umap_sci <- sci[['umap']]@cell.embeddings
 colnames(umap_sci) <- c('sci_UMAP_1','sci_UMAP_2')
@@ -24,7 +25,7 @@ colnames(umap_sci) <- c('sci_UMAP_1','sci_UMAP_2')
 # # sum cutoff equal to 
 # format(object.size(log_x_sci[rownames(log_x_sci)[sparseMatrixStats::rowSums2(log_x_sci) > 0],]), 'Mb')
 
-format(object.size(log_x_sci[rownames(log_x_sci)[sparseMatrixStats::rowSums2(log_x_sci) > 15],]), 'Mb')
+# format(object.size(log_x_sci[rownames(log_x_sci)[sparseMatrixStats::rowSums2(log_x_sci) > 15],]), 'Mb')
 
 # 
 # # If total counts across all cells less than 5, dont even bother displaying
@@ -200,8 +201,8 @@ meta_order <- c(
   # 'Vascular_Subcluster', 
   # 'Macroglia_Subcluster',
   'Preprint_Subtype', 
-  'DissociationMethod', 
-  'Chemistry_10X', 
+  # 'DissociationMethod', 
+  # 'Chemistry_10X', 
   # 'nCount_RNA', 
   # 'nFeature_RNA', 
   # 'Mito_Percent',
@@ -312,31 +313,42 @@ title_link_url = "https://www.jaeleelab.com"
 
 # Save data ---------------------------------------------------------------
 
-# Since free version of ShinyApps server only allows 1Gb of memory, need to 
-# reduce the number of cells for which data is displayed. This is set by the 
-# `app_data_fraction` variable set at the top of this script.
-
-keep_cells <- sample(
-  x = colnames(log_x_sci), 
-  size = trunc(ncol(log_x_sci) * app_data_fraction),
-  replace = FALSE
+# Write raw counts matrix as h5 file (for 66k cells and 33k genes, ~ 300Mb)
+x_sci_t <- Matrix::t(x_sci)
+HDF5Array::writeTENxMatrix(
+  x = x_sci_t, 
+  filepath = './data/sci.h5', 
+  verbose = TRUE
 )
-log_x_sci <- log_x_sci[, keep_cells]
-obs_sci <- obs_sci[keep_cells,]
 
-save(log_x_sci,
-     obs_sci,
+save(obs_sci,
      vars_sci,
      label_coords,
      dataset_dict,
      cell_groupings,
      all_features,
      cell_counts,
+     library_size,
+     ncells,
      window_title,
      title_link_text,
      title_link_url,
      file = './data/appdata.RData')
 
+
+# Since free version of ShinyApps server only allows 1Gb of memory, need to 
+# reduce the number of cells for which data is displayed. This is set by the 
+# `app_data_fraction` variable set at the top of this script.
+# 
+# keep_cells <- sample(
+#   x = colnames(log_x_sci), 
+#   size = trunc(ncol(log_x_sci) * app_data_fraction),
+#   replace = FALSE
+# )
+# log_x_sci <- log_x_sci[, keep_cells]
+# obs_sci <- obs_sci[keep_cells,]
+# 
+# 
 # # Save a key for when server requests genes
 # feature_split_dict <- list(
 #   var_feats = var_feats,
@@ -356,3 +368,53 @@ save(log_x_sci,
 # saveRDS(vars_sci, file = './data/vars_sci.rds')
 # saveRDS(label_coords, file = './data/label_coords.rds')
 # saveRDS(log_x_sci, file = './data/log_x_sci.rds') # will not really need this
+
+
+# HDF5 data formatting ----------------------------------------------------
+
+# library(hdf5r)
+# 
+# dat <- sci[['RNA']]@counts
+# # dat <- round(Matrix::t(dat), digits = 3)
+# 
+f <- h5file(filename = './data/sci.h5', mode = 'r')
+g <- 'Ccr2'
+g.i <- which(f[[names(f)]][['barcodes']][1:33177] == g)
+# nonzero values of the i-th column are data[indptr[i]:indptr[i+1]] with row indices indices[indptr[i]:indptr[i+1]]
+# item (i, j) can be accessed as data[indptr[j]+k], where k is position of i in indices[indptr[j]:indptr[j+1]]
+i <- c(f[[names(f)]][['indptr']][g.i:(g.i + 1)]) + 1
+nonzero_vals <- f[[names(f)]][['data']][i[1]:(i[2]-1)]
+c <- f[[names(f)]][['indices']][i[1]:(i[2]-1)] + 1
+ncells <- ncol(sci[['RNA']]@counts)
+tmp <- rep.int(0, times = ncells)
+tmp[c] <- nonzero_vals
+# 
+# f$close_all()
+# 
+# 
+# log_x_sci@x # data values
+# log_x_sci@i # data index
+# log_x_sci@p # column start index
+# test <- Matrix::t(log_x_sci)
+# HDF5Array::writeTENxMatrix(x = test, filepath = './data/sci.h5', verbose = TRUE)
+# 
+# f <- h5file(filename = './data/sci.h5', mode = 'r')
+# 
+# 
+# f$create_dataset(name = 'rownames', robj = rownames(log_x_sci))
+# f$create_dataset(name = 'colnames', robj = colnames(log_x_sci))
+# f$close_all()
+# f[['matrix']][['indptr']]
+# 
+# 
+# 
+# function(con, i.gene, col.order) {
+#   
+# }
+# 
+# hist(log_x_sci[g,])
+# foo <- log_x_sci[g,]
+# names(foo) <- NULL
+# identical(tmp, foo)
+# 
+# 
