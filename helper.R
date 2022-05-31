@@ -1,66 +1,64 @@
-# Helper functions (e.g. plotting) for the website
 
+#### Helper scripts and functions (e.g. plotting) for the website ###
+
+
+# Env variables -----------------------------------------------------------
+
+# Pre-computed values and expression matrix h5
 load(file = './data/appdata.RData')
+f <- h5file(filename = './data/sci.h5', mode = 'r')
 
-f <- h5file(filename = './data/sci.h5',
-            mode = 'r')
-log_x_sci <- vector(mode = 'list', length = 4000)
-log_x_sci_timestamp <- vector(mode = 'list', length = 4000)
-data_index <- 1
+# Variable for storing expression values
+t.init <- Sys.time()
+log_x_sci <- vector(mode = 'list', length = 1000)
+log_x_sci <- lapply(
+  X = log_x_sci,
+  FUN = function(x) return(list(expr = c(), time = t.init))
+)
+last_query <- 1
+
+# t1 <- Sys.time()
+# t2 <- Sys.time()
+# min(c(t1, t2)) gives t1, the earlier time
 
 
 # Helper functions --------------------------------------------------------
 
-load_data <- function(
-  feature
-) {
+ReadFeatureValue <- function(feature) {
+  
+  # if feature is not already in expression vector
   if (!feature %in% names(log_x_sci)) {
-    if (!all(sapply(log_x_sci, is.null))) {
-      data_index <<- which.min(log_x_sci_timestamp)
-    }
+    
+    # get expression vector slot with earliest retrieval time
+    # returns sequentially since all have t.init at first
+    last_query <<- unname(which.min(sapply(X = log_x_sci, FUN = `[[`, 'time')))
+    
+    # extract non-zero values `g.i`, column `c`, and row `i` values from h5 connection. indexing in h5 file is 0-based. 
     g.i <- which(f[[names(f)]][['barcodes']][1:nrow(vars_sci)] == feature)
     i <- c(f[[names(f)]][['indptr']][g.i:(g.i + 1)]) + 1
     nonzero_vals <- f[[names(f)]][['data']][i[1]:(i[2]-1)]
     c <- f[[names(f)]][['indices']][i[1]:(i[2]-1)] + 1
     tmp <- rep.int(0, times = ncells)
     tmp[c] <- nonzero_vals
+    
+    # Normalize by library size
     tmp <- log1p(tmp/library_size * 10000)
-    log_x_sci[[data_index]] <<- tmp
-    names(log_x_sci)[data_index] <<- feature
-    log_x_sci_timestamp[[data_index]] <<- Sys.time()
-    names(log_x_sci_timestamp[[data_index]]) <<- feature
-    data_index <<- which(sapply(log_x_sci, is.null))[1]
+    
+    log_x_sci[[last_query]][['expr']] <<- tmp
+    log_x_sci[[last_query]][['time']] <<- Sys.time()
+    names(log_x_sci)[last_query] <<- feature
   }
 }
 
-get_feature_colorscale <- function(x) {
+
+GetFeatureColorscale <- function(x) {
   a <- x/max(x)
   cols <- rgb(colorRamp(colors = c('grey90','skyblue','royalblue','darkorchid','violetred','red'), bias = 0.9)(a), maxColorValue = 256)
   return(cols)
 }
 
-# shuffle <- function(x) {
-#   return(x[sample(1:length(x), length(x))])
-# }
-# 
-# partial_order <- function(x, how.much = 1, decreasing = FALSE) {
-#   degree <- ceiling(length(x)/how.much)
-#   x <- split(order(x, decreasing = decreasing), rep(1:degree, each = how.much)[1:length(x)])
-#   x <- unlist(lapply(x, shuffle), use.names = FALSE, recursive = FALSE)
-#   return(x)
-# }
-# 
-# partial_order_positive <- function(x, how.much, decreasing = FALSE) {
-#   pos <- x[x > 0]
-#   not <- which(x <= 0)
-#   if (decreasing) {
-#     return(c(not, partial_order(pos, how.much = how.much, decreasing = decreasing)))
-#   } else {
-#     return(c(partial_order(pos, how.much = how.much, decreasing = decreasing), not))
-#   }
-# }
 
-draw_dimplot <- function(
+DrawDimPlot <- function(
   dataset_value, 
   groupby,
   ptsize,
@@ -80,23 +78,9 @@ draw_dimplot <- function(
   colnames(label_df) <- c('dim1', 'dim2', 'label')
   label_df <- label_df[!is.na(label_df$dim1) & !is.na(label_df$label),]
   label_df$label <- factor(label_df$label, levels = levels(umap_df$groupby))
+  
   n <- nrow(label_df)
   label_cex <- (n^2 + n + 1) / (n^2 - n + 1)
-  
-  t1 <- Sys.time()
-  ggplot(data = umap_df) + 
-    geom_point(mapping = aes(x = dim1, y = dim2, color = groupby),
-               size = 0.5)
-  t1 <- Sys.time() - t1
-  t2 <- Sys.time()
-  plot(x = umap_df$dim1, y = umap_df$dim2, 
-       col = rainbow(length(unique(umap_df$groupby)), v = 0.9)[umap_df$groupby],
-       pch = 16, cex = ptsize, xlab = 'UMAP_1', ylab = 'UMAP_2',
-       main = paste('Grouped by:', groupby),
-       xaxt = 'n', yaxt = 'n', cex.main = 1.5,
-       xlim = xranges, ylim = yranges
-  )
-  t2 <- Sys.time() - t2  
   
   {
     par(mai = c(0.1, 0.1, 1, 0.1), mar = c(0.2,0.2,2,0.2), xpd = FALSE)
@@ -116,7 +100,8 @@ draw_dimplot <- function(
   }
 }
 
-draw_featureplot <- function(
+
+DrawFeaturePlot <- function(
   dataset_value, 
   feature,
   ptsize,
@@ -124,8 +109,8 @@ draw_featureplot <- function(
   yranges
 ) {
   umap_df <- obs_sci[paste0(dataset_value, c('_UMAP_1', '_UMAP_2'))]
-  load_data(feature = feature)
-  umap_df$feature <- log_x_sci[[feature]]
+  ReadFeatureValue(feature = feature)
+  umap_df$feature <- log_x_sci[[feature]][['expr']]
   colnames(umap_df) <- c('dim1','dim2','feature')
   umap_df <- umap_df[order(umap_df$feature),]
   par(mai = c(0.1, 0.1, 1, 0.1), mar = c(0.2,0.2,2,0.2), xpd = FALSE)
@@ -138,7 +123,7 @@ draw_featureplot <- function(
          xlim = xranges, ylim = yranges)
   } else {
     plot(x = umap_df$dim1, y = umap_df$dim2,
-         col = get_feature_colorscale(umap_df$feature),
+         col = GetFeatureColorscale(umap_df$feature),
          pch = 16, cex = ptsize, xlab = 'UMAP_1', ylab = 'UMAP_2',
          xaxt = 'n', yaxt = 'n', cex.main = 1.5,
          main = paste('Gene:', feature),
@@ -146,22 +131,8 @@ draw_featureplot <- function(
   }
 }
 
-splitsubplot <- function(
-  umap_df, 
-  time, 
-  ptsize,
-  xranges,
-  yranges
-) {
-  tmp_df <- umap_df[umap_df$time == time,]
-  plot(x = tmp_df$dim1, y = tmp_df$dim2,
-       col = tmp_df$col, pch = 16, cex = ptsize*1.5, 
-       xlab = 'UMAP_1', ylab = 'UMAP_2',
-       xaxt = 'n', yaxt = 'n', main = paste('Time:', time), cex.main = 2,
-       xlim = xranges, ylim = yranges)
-}
 
-draw_splitfeatureplot <- function(
+DrawSplitFeaturePlot <- function(
   dataset_value, 
   feature,
   ptsize,
@@ -169,29 +140,46 @@ draw_splitfeatureplot <- function(
   yranges
 ) {
   umap_df <- obs_sci[c(paste0(dataset_value, c('_UMAP_1', '_UMAP_2')), 'InjuryTimePoint')]
-  load_data(feature = feature)
-  umap_df$feature <- log_x_sci[[feature]]
+  ReadFeatureValue(feature = feature)
+  umap_df$feature <- log_x_sci[[feature]][['expr']]
   colnames(umap_df) <- c('dim1','dim2','time', 'feature')
   if (!sum(umap_df$feature) > 0) {
     umap_df$col <- 'grey90'
   } else {
-    umap_df$col <- get_feature_colorscale(umap_df$feature)
+    umap_df$col <- GetFeatureColorscale(umap_df$feature)
   }
   umap_df <- umap_df[order(umap_df$feature),]
   par(mai = c(0.1, 0.1, 1, 0.1), mar = c(0.2,0.2,2,0.2), xpd = FALSE, mfrow = c(1,4))
   {
-    splitsubplot(umap_df = umap_df, time = levels(umap_df$time)[1], ptsize,
+    .splitsubplot(umap_df = umap_df, time = levels(umap_df$time)[1], ptsize,
                  xranges = xranges, yranges = yranges)
-    splitsubplot(umap_df = umap_df, time = levels(umap_df$time)[2], ptsize,
+    .splitsubplot(umap_df = umap_df, time = levels(umap_df$time)[2], ptsize,
                  xranges = xranges, yranges = yranges)
-    splitsubplot(umap_df = umap_df, time = levels(umap_df$time)[3], ptsize,
+    .splitsubplot(umap_df = umap_df, time = levels(umap_df$time)[3], ptsize,
                  xranges = xranges, yranges = yranges)
-    splitsubplot(umap_df = umap_df, time = levels(umap_df$time)[4], ptsize,
+    .splitsubplot(umap_df = umap_df, time = levels(umap_df$time)[4], ptsize,
                  xranges = xranges, yranges = yranges)
   }
 }
 
-draw_dimplotlegend <- function(
+
+.splitsubplot <- function(
+    umap_df,
+    time,
+    ptsize,
+    xranges,
+    yranges
+) {
+  tmp_df <- umap_df[umap_df$time == time,]
+  plot(x = tmp_df$dim1, y = tmp_df$dim2,
+       col = tmp_df$col, pch = 16, cex = ptsize*1.5,
+       xlab = 'UMAP_1', ylab = 'UMAP_2',
+       xaxt = 'n', yaxt = 'n', main = paste('Time:', time), cex.main = 2,
+       xlim = xranges, ylim = yranges)
+}
+
+
+DrawDimPlotLegend <- function(
   dataset_value, 
   groupby,
   ptsize,
@@ -220,15 +208,16 @@ draw_dimplotlegend <- function(
   }
 }
 
-draw_featuredotplot <- function(
+
+DrawFeatureDotPlot <- function(
   dataset_value,
   feature,
   groupby
 ) {
   plot_these <- c(paste0(dataset_value, '_UMAP_1'), groupby, 'InjuryTimePoint')
   data_df <- obs_sci[plot_these]
-  load_data(feature = feature)
-  data_df$feature <- log_x_sci[[feature]]
+  ReadFeatureValue(feature = feature)
+  data_df$feature <- log_x_sci[[feature]][['expr']]
   if (!sum(data_df$feature) > 0) {
     text(x = 0.5, y = 0.5, 'Gene not detected in any cells.',
          cex = 1.5, col = 'black')

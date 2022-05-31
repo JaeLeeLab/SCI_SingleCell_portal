@@ -1,19 +1,19 @@
-# TODO:
-# Clarify legends for dimplot vs gene expression
-# 
+
+# packages ----------------------------------------------------------------
 
 library(shiny)
-library(shinyjs)
-library(Matrix)
-library(dplyr)
-library(ggplot2)
 library(shinythemes)
+# library(shinyjs)
+# library(Matrix)
+# library(dplyr)
+library(ggplot2)
+# library(shinythemes)
 # library(tidyr)
-library(BiocManager)
+# library(BiocManager)
 library(hdf5r)
 # library(Seurat)
 # library(HDF5Array)
-options(repos = BiocManager::repositories())
+# options(repos = BiocManager::repositories())
 # BiocManager::install()
 # library(DT)
 
@@ -193,34 +193,6 @@ ui <- fluidPage(
             label = 'Overlay group labels',
             value = TRUE
           ),
-          # textAreaInput(
-          #   inputId = "gene_list", 
-          #   label = "Gene List (up to 10 genes)", 
-          #   placeholder = "Up to 10,\n1 per line"
-          # ),
-          # fluidRow(
-          #   column(
-          #     width = 12, 
-          #     actionButton(
-          #       inputId = "gene_list_submit", 
-          #       label = "Dot plot genes"
-          #     ), 
-          #     align = "center"
-          #   )
-          # ),
-          # h5(
-          #   strong("Table controls")
-          # ),
-          # fluidRow(
-          #   column(
-          #     width = 12,
-          #     actionButton(
-          #       inputId = "reset_table", 
-          #       label = "Reset table"
-          #     ),
-          #     align = "center"
-          #   )
-          # ),
           shinyjs::hidden(
             textInput(
               inputId = "hidden_selected_feature", 
@@ -397,14 +369,6 @@ server <- function(input, output, session) {
     ignoreNULL = TRUE
   )
   
-  # dataset_feature <- observeEvent(
-  #   eventExpr = {
-  #     input$selected_feature
-  #   },
-  #   handlerExpr = {
-  #     load_data(feature = input$selected_feature)
-  #   }
-  # )
   
   # Upon change to selected_dataset, change point size according to number of 
   # points displayed.
@@ -413,10 +377,7 @@ server <- function(input, output, session) {
       input$selected_dataset
     },
     valueExpr = {
-      ncells <- obs_sci[[paste0(dataset_value(), '_UMAP_1')]]
-      ncells <- sum(!is.na(ncells))
-      ptsize <- sqrt(1/sqrt(ncells)*150)
-      return(ptsize)
+      return(pt_size_list[[dataset_value()]])
     }
   )
   
@@ -431,15 +392,6 @@ server <- function(input, output, session) {
     }
   )
   
-  # # UMAP ROI brush selection
-  # brush <- eventReactive(
-  #   eventExpr = {
-  #     input$selected_dataset
-  #   },
-  #   valueExpr = {
-  #     return(NULL)
-  #   }
-  # )
   
   # Zooming on umaps
   ranges <- reactiveValues(x = NULL, y = NULL)
@@ -483,7 +435,7 @@ server <- function(input, output, session) {
       output$dimplot <- renderPlot(
         expr = {
           gc(verbose = FALSE)
-          draw_dimplot(
+          DrawDimPlot(
             dataset = dataset_value(),
             groupby = tmp_group,
             ptsize = dataset_ptsize(),
@@ -508,7 +460,7 @@ server <- function(input, output, session) {
           logging::loginfo("loaded dataset %s with featureplot feature %s.", 
                            dataset_value(), tmp_feature)
           gc(verbose = FALSE)
-          draw_featureplot(
+          DrawFeaturePlot(
             dataset = dataset_value(),
             feature = tmp_feature,
             ptsize = dataset_ptsize(),
@@ -531,7 +483,7 @@ server <- function(input, output, session) {
       output$dimplotlegend <- renderPlot(
         expr = {
           gc(verbose = FALSE)
-          draw_dimplotlegend(
+          DrawDimPlotLegend(
             dataset = dataset_value(),
             groupby = tmp_groupby,
             ptsize = 5*dataset_ptsize(),
@@ -552,7 +504,7 @@ server <- function(input, output, session) {
       output$splitfeatureplot <- renderPlot(
         expr = {
           gc(verbose = FALSE)
-          draw_splitfeatureplot(
+          DrawSplitFeaturePlot(
             dataset = dataset_value(),
             feature = tmp_feature,
             ptsize = dataset_ptsize(),
@@ -575,7 +527,7 @@ server <- function(input, output, session) {
       output$featuredotplot <- renderPlot(
         expr = {
           gc(verbose = FALSE)
-          draw_featuredotplot(
+          DrawFeatureDotPlot(
             dataset = dataset_value(),
             feature = tmp_feature,
             groupby = tmp_groupby
@@ -590,7 +542,7 @@ shinyApp(ui = ui, server = server)
 
 # To deploy, run the following two lines:
 # Current working diretory should contain the project directory.
-# setwd('D:/MiamiProject/')
+# setwd('..')
 # rsconnect::deployApp(appDir = 'sci_scRNAseq_portal/', appName = 'sci_singlecell', account = 'jaeleelab')
 # rsconnect::accounts()
 # rsconnect::accountInfo()

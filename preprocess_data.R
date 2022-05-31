@@ -333,6 +333,7 @@ save(obs_sci,
      window_title,
      title_link_text,
      title_link_url,
+     pt_size_list,
      file = './data/appdata.RData')
 
 
